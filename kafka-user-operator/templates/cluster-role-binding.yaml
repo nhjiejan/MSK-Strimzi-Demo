@@ -1,0 +1,42 @@
+{{- if .Values.rbacEnable }}
+{{- range $operator := .Values.topicOperator }}
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ $.Values.name }}-cluster-role-binding-{{ $operator.namespace }}
+  labels:
+    app: {{ $.Values.name }}
+    chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+    heritage: {{ $.Release.Service }}
+    release: {{ $.Values.name }}
+    component: eventstreams.babylontech.co.uk-crd
+subjects:
+- kind: ServiceAccount
+  name: event-stream-registry
+  namespace: {{ $operator.namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ $.Values.name }}-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+
+{{- end}}
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Values.name }}-cluster-role-binding-reader
+  labels:
+    app: {{ .Values.name }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Values.name }}
+subjects:
+- kind: Group
+  name: Babylon-Internal
+roleRef:
+  kind: ClusterRole
+  name: {{ .Values.name }}-cluster-role-reader
+  apiGroup: rbac.authorization.k8s.io
+
+{{- end }}

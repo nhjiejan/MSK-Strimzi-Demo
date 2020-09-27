@@ -1,0 +1,326 @@
+{{- if .Values.topicOperator }}
+{{- range $operator := .Values.topicOperator }}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-topic-operator-{{ $operator.name }}
+  namespace: {{ $operator.namespace }}
+  labels:
+    app: {{ $.Values.name }}-{{ $operator.name }}
+    chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+    heritage: {{ $.Release.Service }}
+    release: {{ $.Values.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-topic-operator-{{ $operator.name }}
+      release: {{ $.Values.name }}
+  template:
+    metadata:
+      labels:
+        app: kafka-topic-operator-{{ $operator.name }}
+        release: {{ $.Values.name }}
+    spec:           
+      serviceAccountName: kafka-topic-operator-{{ $operator.name }}
+    {{- if $.Values.imagePullSecretName }}
+      imagePullSecrets:
+      - name: {{ $.Values.imagePullSecretName }}
+    {{- end }}
+    {{- if (eq $operator.auth "tls") }}
+      initContainers:
+      - name: kafka-msk-cert-helper
+        image: quay.io/babylonhealth/kafka-msk-proxy:v0.2.5
+        imagePullPolicy: IfNotPresent
+        name: kafka-msk-cert-helper
+        command: ["/bin/bash", "-c", "cat /certs/user.crt /certs/ca.crt > /certs/user-ca-chain.crt"]
+        volumeMounts:
+        - mountPath: /certs/ca.crt
+          name: ca-crt
+          subPath: ca.crt
+        - mountPath: /certs/user.crt
+          name: user-crt
+          subPath: user.crt
+        - mountPath: /certs
+          name: user-ca-chain
+    {{- end }}
+      containers:
+  {{- if (eq $operator.auth "tls") }}
+      - name: kafka-msk-proxy-sidecar
+        image: quay.io/babylonhealth/kafka-msk-proxy:v0.2.5
+        imagePullPolicy: IfNotPresent
+        args:
+        - server
+        - --log-format=json
+      {{- range $index, $broker := $operator.kafka_bootstrap_servers }}
+        - --bootstrap-server-mapping={{ $broker }},127.0.0.1:3240{{ $index | add 1 }}
+      {{- end }}
+        - --tls-enable
+        - --tls-ca-chain-cert-file=/certs/ca.crt
+        - --tls-client-cert-file=/certs/user-ca-chain.crt
+        - --tls-client-key-file=/certs/user.key
+        - --tls-client-key-password=$(TLS_CLIENT_KEY_PASSWORD)
+        - --tls-insecure-skip-verify
+        command:
+        - /usr/local/bin/kafka-proxy
+        env:
+        - name: USERNAME
+          value: kafka.user.kafka-topic-operator-{{ $operator.name }}
+        - name: TLS_CLIENT_KEY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: user.password
+              name: kafka.user.kafka-topic-operator-{{ $operator.name }}
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 9080
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 3
+          successThreshold: 1
+          timeoutSeconds: 1
+        ports:
+        - containerPort: 9080
+          name: metrics
+          protocol: TCP
+        {{- range $index, $broker := $operator.kafka_bootstrap_servers }}
+        - name: kafka-{{ $index | add 1 }}
+          containerPort: 3240{{ $index | add 1 }}
+        {{- end }}
+        readinessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /health
+            port: 9080
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 2
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /certs/ca.crt
+          name: ca-crt
+          subPath: ca.crt
+        - mountPath: /certs/user.crt
+          name: user-crt
+          subPath: user.crt
+        - mountPath: /certs/user.key
+          name: user-key
+          subPath: user.key
+        - mountPath: /certs/user-ca-chain.crt
+          name: user-ca-chain
+          subPath: user-ca-chain.crt
+  {{- end }}
+      - name: kafka-topic-operator
+        image: "{{ $operator.image }}:{{ $operator.tag }}"
+        command:
+        - /opt/strimzi/bin/topic_operator_run.sh 
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        resources:
+{{ toYaml $operator.resources | indent 12 }}
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthy
+            port: http
+          initialDelaySeconds: 200
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5  
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 200
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        env:
+      {{- range $key, $value := $operator.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+      {{- end }}
+    {{- if (eq $operator.auth "tls") }}
+        - name: USERNAME
+          value: kafka.user.kafka-topic-operator-{{ $operator.name }}
+    {{- else }}
+        - name: SASL_JAAS_USERNAME
+          value: kafka.user.kafka-topic-operator-{{ $operator.name }}
+        - name: SASL_JAAS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka.user.kafka-topic-operator-{{ $operator.name }}
+              key: password
+        - name: STRIMZI_TRUSTSTORE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ $.Values.name }}-topic-secrets-{{ $operator.name }}
+              key: truststore_password
+        - name: STRIMZI_KEYSTORE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ $.Values.name }}-topic-secrets-{{ $operator.name }}
+              key: keystore_password
+        - name: STRIMZI_KEY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ $.Values.name }}-topic-secrets-{{ $operator.name }}
+              key: key_password
+        volumeMounts:        
+        - mountPath: /conf/ssl/
+          name: ssl-store-files
+          readOnly: true
+    {{- end }}    
+      volumes:
+      - name: ca-certificates
+        configMap:
+          defaultMode: 0444
+          name: ca-certificates-2  
+  {{- if (eq $operator.auth "tls") }}
+      - name: ca-crt
+        secret:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          secretName: kafka.user.kafka-topic-operator-{{ $operator.name }}
+      - name: user-crt
+        secret:
+          items:
+          - key: user.crt
+            path: user.crt
+          secretName: kafka.user.kafka-topic-operator-{{ $operator.name }}
+      - name: user-key
+        secret:
+          items:
+          - key: user.key
+            path: user.key
+          secretName: kafka.user.kafka-topic-operator-{{ $operator.name }}
+      - name: user-p12
+        secret:
+          items:
+          - key: user.p12
+            path: user.p12
+          secretName: kafka.user.kafka-topic-operator-{{ $operator.name }}
+      - emptyDir: {}
+        name: user-ca-chain
+  {{- else }}    
+      - name: ssl-store-files
+        projected:
+          sources:
+            - secret:
+                items:
+                - key: kafka.keystore.jks
+                  mode: 420
+                  path: kafka.keystore.jks
+                name: {{ $.Values.name }}-topic-secrets-{{ $operator.name }}
+            - secret:
+                items:
+                - key: kafka.truststore.jks
+                  mode: 420
+                  path: kafka.truststore.jks
+                name: {{ $.Values.name }}-topic-secrets-{{ $operator.name }}
+  {{- end}}
+---
+
+apiVersion: kafka.strimzi.io/v1beta1
+kind: KafkaUser
+metadata:
+  labels:
+    app: {{ $.Values.name }}-{{ $operator.name }}
+    chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+    heritage: {{ $.Release.Service }}
+    release: {{ $.Values.name }}
+    strimzi.io/cluster: {{ $operator.name }}
+  name: kafka.user.kafka-topic-operator-{{ $operator.name }}
+  namespace: {{ $operator.namespace }}
+spec:
+  authentication:
+    type: {{ $operator.auth | default "scram-sha-512" }}
+  authorization:
+    acls:
+    - host: '*'
+      operation: Read
+      resource:
+        name: '*'
+        patternType: literal
+        type: topic
+      type: allow
+    - host: '*'
+      operation: Write
+      resource:
+        name: '*'
+        patternType: literal
+        type: topic
+      type: allow
+    - host: '*'
+      operation: Describe
+      resource:
+        name: '*'
+        patternType: literal
+        type: topic
+      type: allow
+    - host: '*'
+      operation: DescribeConfigs
+      resource:
+        name: '*'
+        patternType: literal
+        type: topic
+      type: allow
+    - host: '*'
+      operation: Create
+      resource:
+        name: '*'
+        patternType: literal
+        type: topic
+      type: allow
+    - host: '*'
+      operation: AlterConfigs
+      resource:
+        name: '*'
+        patternType: literal
+        type: topic
+      type: allow
+    - host: '*'
+      operation: Alter
+      resource:
+        name: '*'
+        patternType: literal
+        type: topic
+      type: allow
+    - host: '*'
+      operation: Describe
+      resource:
+        type: cluster
+      type: allow
+    - host: '*'
+      operation: DescribeConfigs
+      resource:
+        type: cluster
+      type: allow
+    - host: '*'
+      operation: Alter
+      resource:
+        type: cluster
+      type: allow
+    - host: '*'
+      operation: ClusterAction
+      resource:
+        type: cluster
+      type: allow
+    - host: '*'
+      operation: Create
+      resource:
+        type: cluster
+      type: allow
+    type: simple
+---
+{{- end}}
+{{- end}}

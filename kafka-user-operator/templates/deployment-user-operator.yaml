@@ -1,0 +1,77 @@
+{{- if .Values.userOperator }}
+{{- range $operator := .Values.userOperator }}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-user-operator-{{ $operator.name }}
+  namespace: {{ $operator.namespace }}
+  labels:
+    app: {{ $.Values.name }}-{{ $operator.name }}
+    chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+    heritage: {{ $.Release.Service }}
+    release: {{ $.Values.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-user-operator-{{ $operator.name }}
+      release: {{ $.Values.name }}
+  template:
+    metadata:
+      labels:
+        app: kafka-user-operator-{{ $operator.name }}
+        release: {{ $.Values.name }}
+    spec:      
+      serviceAccountName: kafka-user-operator-{{ $operator.name }}
+      {{- if $.Values.imagePullSecretName }}
+      imagePullSecrets:
+        - name: {{ $.Values.imagePullSecretName }}
+      {{- end }}
+      containers:
+        - name: kafka-user-operator
+          command: 
+          - /opt/strimzi/bin/user_operator_run.sh
+          image: "{{ $operator.image }}:{{ $operator.tag }}"
+          imagePullPolicy: Always
+          ports:
+          - name: http
+            containerPort: 8081
+            protocol: TCP
+          resources:
+{{ toYaml $operator.resources | indent 12 }}
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthy
+              port: http
+            initialDelaySeconds: 200
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 200
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          env:
+            {{- range $key, $value := $operator.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            - name: STRIMZI_CA_CERT_NAME
+              value: {{ $.Values.name }}-user-secrets-{{ $operator.name }}
+            - name: STRIMZI_CA_KEY_NAME
+              value: {{ $.Values.name }}-user-secrets-{{ $operator.name }}
+      volumes:      
+        - name: ca-certificates
+          configMap:
+            defaultMode: 0444
+            name: ca-certificates-2
+---
+{{- end}}
+{{- end}}

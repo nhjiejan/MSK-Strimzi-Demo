@@ -1,0 +1,61 @@
+{{- if .Values.userOperator -}}
+{{- range $operator := .Values.userOperator }}
+
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kafka-user-operator-role-{{ $operator.name }}
+  namespace: {{ $operator.namespace }}
+  labels:
+    app: {{ $.Values.name }}-{{ $operator.name }}
+    chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+    heritage: {{ $.Release.Service }}
+    release: {{ $.Values.name }}
+rules:
+  - apiGroups:
+    - kafka.strimzi.io
+    resources:
+    - kafkausers
+    - kafkausers/status
+    verbs:
+    - get
+    - watch
+    - list
+    - create
+    - patch
+    - update
+    - delete
+  - apiGroups:
+    - ""
+    resources:
+    - secrets
+    verbs:
+    - get
+    - list
+    - create
+    - patch
+    - update
+    - delete
+
+---
+
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kafka-user-operator-binding-{{ $operator.name }}
+  namespace: {{ $operator.namespace }}
+  labels:
+    app: {{ $.Values.name }}-{{ $operator.name }}
+    chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+    heritage: {{ $.Release.Service }}
+    release: {{ $.Values.name }}
+subjects:
+- kind: ServiceAccount
+  name: kafka-user-operator-{{ $operator.name }}
+roleRef:
+  kind: Role
+  name: kafka-user-operator-role-{{ $operator.name }}
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}
+{{- end }}

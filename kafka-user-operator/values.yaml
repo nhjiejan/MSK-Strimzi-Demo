@@ -1,0 +1,36 @@
+name: kafka-user-operator
+rbacEnable: true
+
+namespace: dev
+imagePullSecretName: "" # your image pull secret
+
+userOperator:
+  - name: dev-msk
+    namespace: dev
+    image: quay.io/babylonhealth/kafka-operator
+    tag: 0.18.3
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "1000Mi"
+      limits:
+        cpu: "2000m"
+        memory: "4096Mi"
+    env:
+      STRIMZI_LABELS: "strimzi.io/cluster=dev-msk"
+      STRIMZI_ZOOKEEPER_CONNECT: "" # Connection String for your ZK nodes
+      STRIMZI_ZOOKEEPER_SESSION_TIMEOUT_MS: "20000"
+      STRIMZI_FULL_RECONCILIATION_INTERVAL_MS: "120000"
+      STRIMZI_LOG_LEVEL: INFO
+      LOG_LEVEL: INFO
+      STRIMZI_NAMESPACE: dev
+      STRIMZI_TLS_ENABLED: "true"
+      STRIMZI_GC_LOG_ENABLED: "false"
+      STRIMZI_CA_VALIDITY: "365"
+      STRIMZI_CA_RENEWAL: "30"
+    secrets:
+      kakfa_ca_crt: secret/msk-poc/ca.crt # Vault path to ca.crt
+      kakfa_ca_key: secret/msk-poc/ca.key # Valut Path to ca.key
+
+
+  
