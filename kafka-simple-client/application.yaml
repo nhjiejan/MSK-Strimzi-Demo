@@ -1,4 +1,3 @@
-
 ---
 # Source: base/templates/deployment.yaml
 
@@ -61,12 +60,25 @@ spec:
       serviceAccountName: kafka-simple-client
       imagePullSecrets:
       - name: babylonhealth-deploy-dev-pull-secret
+      initContainers:      
+      - name: kafka-msk-cert-helper
+        image: quay.io/babylonhealth/kafka-msk-proxy:v0.2.5
+        command: ["/bin/bash", "-c", "cat /certs/user.crt /certs/ca.crt > /certs/user-ca-chain.crt"]
+        volumeMounts:
+          - name: ca-crt
+            mountPath: /certs/ca.crt
+            subPath: ca.crt
+          - name: user-crt
+            mountPath: /certs/user.crt
+            subPath: user.crt
+          - name: user-ca-chain
+            mountPath: /certs
       containers:
       - name: kafka-simple-client
         image: "quay.io/babylonhealth/kafka-simple-client:0.0.1"
         command:
         - sleep
-        - infinity
+        - infinity      
         imagePullPolicy: IfNotPresent
         resources:
           limits:
@@ -74,7 +86,7 @@ spec:
             memory: 1Gi
           requests:
             cpu: 100m
-            memory: 128M
+            memory: 128M  
         env:
         - name: LOG_LEVEL
           value: "DEBUG"
@@ -85,9 +97,97 @@ spec:
         - name: REGION_NAME
           value: dev-uk
         - name: SERVICE_VERSION
-          value: 0.0.1
-        volumeMounts:                
-      volumes:            
+          value: 0.0.1                     
+      - name: kafka-msk-proxy-sidecar
+        image: quay.io/babylonhealth/kafka-msk-proxy:v0.2.5
+        imagePullPolicy: IfNotPresent
+        command: ["/usr/local/bin/kafka-proxy"]
+        args:
+          - 'server'
+          - '--log-format=json'
+          - '--bootstrap-server-mapping=xxxxxxxxxxxxxxxxx:9093,127.0.0.1:32401'
+          - '--bootstrap-server-mapping=xxxxxxxxxxxxxxxxx:9093,127.0.0.1:32402'
+          - '--bootstrap-server-mapping=xxxxxxxxxxxxxxxxx:9093,127.0.0.1:32403'
+          - '--tls-enable'
+          - '--tls-ca-chain-cert-file=/certs/ca.crt'
+          - '--tls-client-cert-file=/certs/user-ca-chain.crt'
+          - '--tls-client-key-file=/certs/user.key'
+          - '--tls-client-key-password=$(TLS_CLIENT_KEY_PASSWORD)'
+          - '--tls-insecure-skip-verify'
+        env:
+        - name: USERNAME
+          value: kafka.user.kafka-simple-client
+        - name: TLS_CLIENT_KEY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka.user.kafka-simple-client
+              key: user.password
+        volumeMounts:
+        - name: ca-crt
+          mountPath: /certs/ca.crt
+          subPath: ca.crt
+        - name: user-crt
+          mountPath: /certs/user.crt
+          subPath: user.crt
+        - name: user-key
+          mountPath: /certs/user.key
+          subPath: user.key
+        - name: user-ca-chain
+          mountPath: /certs/user-ca-chain.crt
+          subPath: user-ca-chain.crt
+        ports:
+        - name: metrics
+          containerPort: 9080
+        - name: kafka-1
+          containerPort: 32401
+        - name: kafka-2
+          containerPort: 32402
+        - name: kafka-3
+          containerPort: 32403
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9080
+          initialDelaySeconds: 5
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 2
+          failureThreshold: 5
+      volumes:      
+      - name: ca-crt
+        secret:
+          secretName: kafka.user.kafka-simple-client
+          items:
+          - key: ca.crt
+            path: ca.crt
+      - name: user-crt
+        secret:
+          secretName: kafka.user.kafka-simple-client
+          items:
+          - key: user.crt
+            path: user.crt
+      - name: user-key
+        secret:
+          secretName: kafka.user.kafka-simple-client
+          items:
+          - key: user.key
+            path: user.key
+      - name: user-p12
+        secret:
+          secretName: kafka.user.kafka-simple-client
+          items:
+          - key: user.p12
+            path: user.p12
+      - name: user-ca-chain
+        emptyDir: {}      
+     
+
     
 ---
 # Kafka Topic
