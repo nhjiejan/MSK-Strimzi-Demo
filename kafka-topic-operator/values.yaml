@@ -23,7 +23,7 @@ topicOperator:
         memory: "4096Mi"
     env:
       SENTRY_DSN: "none"
-      STRIMZI_RESOURCE_LABELS: "strimzi.io/cluster=dev-msk"
+      STRIMZI_RESOURCE_LABELS: "strimzi.io/cluster=dev-msk" # ensure this value is is the same as the name variable above
       STRIMZI_KAFKA_BOOTSTRAP_SERVERS: "127.0.0.1:32401,127.0.0.1:32402,127.0.0.1:32403" # This should match the number of Kafka Brokers
       STRIMZI_ZOOKEEPER_CONNECT: "" # Connection String for your ZK nodes
       STRIMZI_ZOOKEEPER_SESSION_TIMEOUT_MS: "20000"

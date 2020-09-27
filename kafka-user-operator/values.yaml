@@ -7,7 +7,7 @@ imagePullSecretName: "" # your image pull secret
 userOperator:
   - name: dev-msk
     namespace: dev
-    image: quay.io/babylonhealth/kafka-operator
+    image: "" # your image of the strimzi operator
     tag: 0.18.3
     resources:
       requests:
@@ -17,7 +17,7 @@ userOperator:
         cpu: "2000m"
         memory: "4096Mi"
     env:
-      STRIMZI_LABELS: "strimzi.io/cluster=dev-msk"
+      STRIMZI_LABELS: "strimzi.io/cluster=dev-msk" # ensure this value is is the same as the name variable above
       STRIMZI_ZOOKEEPER_CONNECT: "" # Connection String for your ZK nodes
       STRIMZI_ZOOKEEPER_SESSION_TIMEOUT_MS: "20000"
       STRIMZI_FULL_RECONCILIATION_INTERVAL_MS: "120000"

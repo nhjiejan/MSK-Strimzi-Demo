@@ -1,0 +1,186 @@
+
+---
+# Source: base/templates/deployment.yaml
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: kafka-simple-client
+  namespace: dev
+  labels:
+    app: kafka-simple-client
+    type: service
+    team: data-operations
+    squad: data-operations
+    tribe: platform-engineering
+    app.kubernetes.io/name: kafka-simple-client
+    app.kubernetes.io/version: 0.0.1
+    app.kubernetes.io/managed-by: shipcat
+spec:
+  replicas: 1
+  revisionHistoryLimit: 20
+  strategy:
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 0%
+      
+  minReadySeconds: 10
+  selector:
+    matchLabels:
+      app: kafka-simple-client
+      release: kafka-simple-client
+  template:
+    metadata:
+      labels:
+        app: kafka-simple-client
+        release: kafka-simple-client
+        team: data-operations
+        squad: data-operations
+        tribe: platform-engineering
+    spec:      
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: "kubernetes.io/hostname"
+            labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - kafka-simple-client
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - kafka-simple-client
+              topologyKey: "failure-domain.beta.kubernetes.io/zone"
+      serviceAccountName: kafka-simple-client
+      imagePullSecrets:
+      - name: babylonhealth-deploy-dev-pull-secret
+      containers:
+      - name: kafka-simple-client
+        image: "quay.io/babylonhealth/kafka-simple-client:0.0.1"
+        command:
+        - sleep
+        - infinity
+        imagePullPolicy: IfNotPresent
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 128M
+        env:
+        - name: LOG_LEVEL
+          value: "DEBUG"
+        - name: SERVICE_NAME
+          value: kafka-simple-client
+        - name: ENV_NAME
+          value: dev
+        - name: REGION_NAME
+          value: dev-uk
+        - name: SERVICE_VERSION
+          value: 0.0.1
+        volumeMounts:                
+      volumes:            
+    
+---
+# Kafka Topic
+apiVersion: kafka.strimzi.io/v1beta1
+kind: KafkaTopic
+metadata:
+  name: some-topic
+  labels:
+    strimzi.io/cluster: dev-msk
+    service: kafka-simple-client
+spec:
+  topicName: some-topic
+  partitions: 1
+  replicas: 3
+  config:
+    retention.ms : 604800000
+    segment.bytes : 1073741824
+
+---
+# Kafka User
+apiVersion: kafka.strimzi.io/v1beta1
+kind: KafkaUser
+metadata:
+  name: kafka.user.kafka-simple-client
+  labels:
+    strimzi.io/cluster: dev-msk
+    service: kafka-simple-client
+spec:
+  authentication:
+    type: tls
+  authorization:
+    type: simple
+    acls:
+    - resource:
+        type: group
+        name: kafka-simple-client
+        patternType: prefix
+      operation: Read
+      host: '*'
+      type: allow
+    - resource:
+        type: group
+        name: kafka-simple-client
+        patternType: prefix
+      operation: Describe
+      host: '*'
+      type: allow
+    - resource:
+        type: topic
+        name: kafka-simple-client
+        patternType: prefix
+      operation: Create
+      host: '*'
+      type: allow
+    - resource:
+        type: topic
+        name: kafka-simple-client
+        patternType: literal
+      operation: Write
+      host: '*'
+      type: allow
+    - resource:
+        type: topic
+        name: kafka-simple-client
+        patternType: literal
+      operation: Delete
+      host: '*'
+      type: allow
+    - resource:
+        type: topic
+        name: kafka-simple-client
+        patternType: literal
+      operation: Read
+      host: '*'
+      type: allow
+    - resource:
+        type: topic
+        name: some-topic
+        patternType: literal
+      operation: Describe
+      host: '*'
+      type: allow
+    - resource:
+        type: topic
+        name: some-topic
+        patternType: prefix
+      operation: Read
+      host: '*'
+      type: allow
+    - resource:
+        type: topic
+        name: some-topic
+        patternType: prefix
+      operation: Write
+      host: '*'
+      type: allow
