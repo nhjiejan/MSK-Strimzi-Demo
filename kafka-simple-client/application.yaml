@@ -22,7 +22,6 @@ spec:
     rollingUpdate:
       maxSurge: 50%
       maxUnavailable: 0%
-      
   minReadySeconds: 10
   selector:
     matchLabels:
@@ -97,7 +96,13 @@ spec:
         - name: REGION_NAME
           value: dev-uk
         - name: SERVICE_VERSION
-          value: 0.0.1                     
+          value: 0.0.1
+        - name: BOOTSTRAP_SERVERS
+          value: 127.0.0.1:32401,127.0.0.1:32402,127.0.0.1:32403
+        volumeMounts:
+          - name: client-conf
+            mountPath: /conf/client.conf
+            subPath: client.conf    
       - name: kafka-msk-proxy-sidecar
         image: quay.io/babylonhealth/kafka-msk-proxy:v0.2.5
         imagePullPolicy: IfNotPresent
@@ -159,7 +164,10 @@ spec:
           timeoutSeconds: 5
           successThreshold: 2
           failureThreshold: 5
-      volumes:      
+      volumes:
+      - name: client-conf
+        configMap:
+          name: kafka-simple-client-config
       - name: ca-crt
         secret:
           secretName: kafka.user.kafka-simple-client
@@ -187,7 +195,27 @@ spec:
       - name: user-ca-chain
         emptyDir: {}      
      
-
+---
+# configMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-simple-client-config
+  namespace: dev
+  labels:
+    app: kafka-simple-client
+    type: service
+    team: data-operations
+    squad: data-operations
+    tribe: platform-engineering
+    app.kubernetes.io/name: kafka-simple-client
+    app.kubernetes.io/version: 0.0.1
+    app.kubernetes.io/managed-by: shipcat
+data:
+  client.conf: |
+    security.protocol=PLAINTEXT
+    bootstrap.servers=127.0.0.1:32401,127.0.0.1:32402,127.0.0.1:32403
+    ssl.endpoint.identification.algorithm=
     
 ---
 # Kafka Topic
@@ -284,3 +312,6 @@ spec:
       operation: Write
       host: '*'
       type: allow
+
+
+
